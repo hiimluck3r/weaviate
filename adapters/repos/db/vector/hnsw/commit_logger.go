@@ -73,7 +73,7 @@ func NewCommitLogger(rootPath, name string, logger logrus.FieldLogger,
 	}
 	l.commitLogger = commitlog.NewLoggerWithFile(fd)
 	l.switchLogsCallbackCtrl = maintenanceCallbacks.Register(id("switch_logs"), l.startSwitchLogs)
-	l.condenseLogsCallbackCtrl = maintenanceCallbacks.Register(id("condense_logs"), l.startCombineAndCondenseLogs)
+	l.condenseLogsCallbackCtrl = maintenanceCallbacks.Register(id("maintain_logs"), l.startCommitLogsMaintenance)
 
 	return l, nil
 }
@@ -477,28 +477,28 @@ func (l *hnswCommitLogger) startSwitchLogs(shouldAbort cyclemanager.ShouldAbortC
 	executed, err := l.switchCommitLogs(false)
 	if err != nil {
 		l.logger.WithError(err).
-			WithField("action", "hnsw_commit_log_maintenance").
-			Error("hnsw commit log maintenance failed")
+			WithField("action", "hnsw_commit_log_switch").
+			Error("hnsw commit log switch failed")
 	}
 	return executed
 }
 
-func (l *hnswCommitLogger) startCombineAndCondenseLogs(shouldAbort cyclemanager.ShouldAbortCallback) bool {
-	executed1, err := l.combineLogs()
+func (l *hnswCommitLogger) startCommitLogsMaintenance(shouldAbort cyclemanager.ShouldAbortCallback) bool {
+	executedCombine, err := l.combineLogs()
 	if err != nil {
 		l.logger.WithError(err).
 			WithField("action", "hnsw_commit_log_combining").
 			Error("hnsw commit log maintenance (combining) failed")
 	}
 
-	executed2, err := l.condenseOldLogs()
+	executedCondense, err := l.condenseLogs()
 	if err != nil {
 		l.logger.WithError(err).
 			WithField("action", "hnsw_commit_log_condensing").
 			Error("hnsw commit log maintenance (condensing) failed")
 	}
 
-	return executed1 || executed2
+	return executedCombine || executedCondense
 }
 
 func (l *hnswCommitLogger) SwitchCommitLogs(force bool) error {
@@ -558,7 +558,7 @@ func (l *hnswCommitLogger) switchCommitLogs(force bool) (bool, error) {
 	return true, nil
 }
 
-func (l *hnswCommitLogger) condenseOldLogs() (bool, error) {
+func (l *hnswCommitLogger) condenseLogs() (bool, error) {
 	files, err := getCommitFileNames(l.rootPath, l.id, 0)
 	if err != nil {
 		return false, err
