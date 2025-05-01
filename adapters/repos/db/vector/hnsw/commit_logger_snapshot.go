@@ -40,8 +40,12 @@ const (
 	SnapshotCompressionTypeSQ
 )
 
+func snapshotName(path string) string {
+	return strings.TrimSuffix(filepath.Base(path), ".snapshot")
+}
+
 func snapshotTimestamp(path string) (int64, error) {
-	return asTimeStamp(strings.TrimSuffix(filepath.Base(path), ".snapshot"))
+	return asTimeStamp(snapshotName(path))
 }
 
 func snapshotDirectory(rootPath, name string) string {
@@ -218,6 +222,61 @@ func (l *hnswCommitLogger) getLastSnapshotName() (string, error) {
 
 	// no snapshot found
 	return "", nil
+}
+
+// read the directory and find the latest snapshot file
+func (l *hnswCommitLogger) getLastSnapshot() (path string, created int64, err error) {
+	snapshotDir := snapshotDirectory(l.rootPath, l.id)
+
+	entries, err := os.ReadDir(snapshotDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			// no snapshot directory, no snapshot
+			return "", 0, nil
+		}
+
+		return "", 0, errors.Wrapf(err, "read snapshot directory %q", snapshotDir)
+	}
+
+	for i := len(entries) - 1; i >= 0; i-- {
+		entry := entries[i]
+		if entry.IsDir() {
+			continue
+		}
+		path := filepath.Join(snapshotDir, entry.Name())
+
+		if strings.HasSuffix(entry.Name(), ".snapshot.tmp") {
+			// a temporary snapshot file was found which means that the snapshoting
+			// process never completed, this file is thus considered corrupt (too
+			// short) and must be deleted. The commit log is never deleted so it's safe to
+			// delete this without data loss.
+			_ = os.Remove(path)
+			// the corresponding checkpoints file should also be removed if it exists
+			// as it's created right after the temporary snapshot file
+			cpfn := path + ".checkpoints"
+			_ = os.Remove(cpfn)
+
+			l.logger.WithField("action", "hnsw_remove_tmp_snapshot").
+				WithField("path", path).
+				Warn("removed tmp snapshot file")
+
+			continue
+		}
+
+		if !strings.HasSuffix(entry.Name(), ".snapshot") {
+			// not a snapshot file
+			continue
+		}
+
+		created, err = snapshotTimestamp(path)
+		if err != nil {
+			return "", 0, errors.Wrapf(err, "get snapshot timestamp")
+		}
+		return path, created, nil
+	}
+
+	// no snapshot found
+	return "", 0, nil
 }
 
 // cleanupSnapshots removes all snapshots, checkpoints and temporary files older than the given timestamp.

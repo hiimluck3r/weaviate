@@ -484,7 +484,14 @@ func (l *hnswCommitLogger) startSwitchLogs(shouldAbort cyclemanager.ShouldAbortC
 }
 
 func (l *hnswCommitLogger) startCommitLogsMaintenance(shouldAbort cyclemanager.ShouldAbortCallback) bool {
-	executedCombine, err := l.combineLogs()
+	partitions := []string{}
+	if path, _, err := l.getLastSnapshot(); err == nil && path != "" {
+		partitions = append(partitions, snapshotName(path))
+
+		fmt.Printf("  ==> partitions %v\n\n", partitions)
+	}
+
+	executedCombine, err := l.combineLogs(partitions...)
 	if err != nil {
 		l.logger.WithError(err).
 			WithField("action", "hnsw_commit_log_combining").
@@ -498,7 +505,14 @@ func (l *hnswCommitLogger) startCommitLogsMaintenance(shouldAbort cyclemanager.S
 			Error("hnsw commit log maintenance (condensing) failed")
 	}
 
-	return executedCombine || executedCondense
+	executedSnapshot, err := l.createSnapshot(shouldAbort)
+	if err != nil {
+		l.logger.WithError(err).
+			WithField("action", "hnsw_snapshot_creating").
+			Error("hnsw commit log maintenance (snapshot) failed")
+	}
+
+	return executedCombine || executedCondense || executedSnapshot
 }
 
 func (l *hnswCommitLogger) SwitchCommitLogs(force bool) error {
@@ -623,6 +637,11 @@ func (l *hnswCommitLogger) combineLogs(partitions ...string) (bool, error) {
 	// sum of both input files
 	threshold := l.logCombiningThreshold()
 	return NewCommitLogCombiner(l.rootPath, l.id, threshold, l.logger).Do(partitions...)
+}
+
+func (l *hnswCommitLogger) createSnapshot(shouldAbort cyclemanager.ShouldAbortCallback) (bool, error) {
+	// TODO al:snapshots implement
+	return false, nil
 }
 
 func (l *hnswCommitLogger) logCombiningThreshold() int64 {
