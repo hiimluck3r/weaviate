@@ -153,6 +153,121 @@ func (l *hnswCommitLogger) createOrLoadSnapshot(load bool) (*DeserializationResu
 	return state, ts, nil
 }
 
+func (l *hnswCommitLogger) LoadSnapshot() (state *DeserializationResult, createdAt int64, err error) {
+	snapshotPath, createdAt, err := l.getLastSnapshot()
+	if err != nil {
+		return nil, 0, errors.Wrapf(err, "get last snapshot")
+	}
+	if snapshotPath == "" {
+		return nil, 0, nil
+	}
+	state, err = l.readSnapshot(snapshotPath)
+	if err != nil {
+		return nil, 0, errors.Wrapf(err, "read snapshot")
+	}
+	return state, createdAt, nil
+}
+
+func (l *hnswCommitLogger) CreateSnapshot2() (created bool, err error) {
+	snapshotPath, createdAt, err := l.getLastSnapshot()
+	if err != nil {
+		return false, errors.Wrapf(err, "get last snapshot")
+	}
+	commitLogPaths, err := l.getDeltaCommitLogs(createdAt)
+	if err != nil {
+		return false, errors.Wrapf(err, "get delta commitlogs")
+	}
+	// no new files since previous snapshot / no files at all
+	ln := len(commitLogPaths)
+	if ln == 0 {
+		return false, nil
+	}
+
+	var snapshotState *DeserializationResult
+	if snapshotPath != "" {
+		snapshotState, err = l.readSnapshot(snapshotPath)
+		if err != nil {
+			return false, errors.Wrapf(err, "read snapshot")
+		}
+	}
+
+	// TODO al:snapshot add metrics?
+	newState, err := loadCommitLoggerState(l.logger, commitLogPaths, snapshotState, nil)
+	if err != nil {
+		return false, errors.Wrapf(err, "apply delta commitlogs")
+	}
+
+	newSnapshotPath := l.snapshotFileName(commitLogPaths[ln-1])
+	if err := l.writeSnapshot(newState, newSnapshotPath); err != nil {
+		return false, errors.Wrapf(err, "write new snapshot")
+	}
+
+	newCreatedAt, err := snapshotTimestamp(newSnapshotPath)
+	if err != nil {
+		return true, errors.Wrapf(err, "get snapshot created at")
+	}
+
+	if err = l.cleanupSnapshots(newCreatedAt); err != nil {
+		return true, errors.Wrapf(err, "cleanup snapshot")
+	}
+
+	return true, nil
+}
+
+func (l *hnswCommitLogger) CreateAndLoadSnapshot2() (state *DeserializationResult, createdAt int64, err error) {
+
+	return nil, 0, nil
+}
+
+// func (l *hnswCommitLogger) createAndOptionallyLoadSnapshot(load bool,
+// ) (state *DeserializationResult, createdAt int64, err error) {
+// 	snapshotPath, createdAt, err := l.getLastSnapshot()
+// 	if err != nil {
+// 		return nil, 0, errors.Wrapf(err, "get last snapshot")
+// 	}
+// 	commitLogPaths, err := l.getDeltaCommitLogs(createdAt)
+// 	if err != nil {
+// 		return nil, 0, errors.Wrapf(err, "get delta commitlogs")
+// 	}
+// 	// no new files since previous snapshot
+// 	ln := len(commitLogPaths)
+// 	if !load && ln == 0 {
+// 		return nil, 0, nil
+// 	}
+
+// 	state, err = l.readSnapshot(snapshotPath)
+// 	if err != nil {
+// 		return nil, 0, errors.Wrapf(err, "read snapshot")
+// 	}
+
+// 	// if ln == 0 {
+// 	// 	return state,
+// 	// }
+
+// 	// TODO al:snapshot add metrics?
+// 	state, err = loadCommitLoggerState(l.logger, commitLogPaths, state, nil)
+// 	if err != nil {
+// 		return created, errors.Wrapf(err, "apply delta commitlogs")
+// 	}
+
+// 	newSnapshotPath := l.snapshotFileName(commitLogPaths[ln-1])
+// 	if err := l.writeSnapshot(state, newSnapshotPath); err != nil {
+// 		return created, errors.Wrapf(err, "write new snapshot")
+// 	}
+// 	created = true
+
+// 	createdAt, err = snapshotTimestamp(newSnapshotPath)
+// 	if err != nil {
+// 		return created, errors.Wrapf(err, "get snapshot created at")
+// 	}
+
+// 	if err = l.cleanupSnapshots(createdAt); err != nil {
+// 		return created, errors.Wrapf(err, "cleanup snapshot")
+// 	}
+
+// 	return created, nil
+// }
+
 // checks if snapshot should be created, and if so, returns the name of the
 // immutable commit log files to be used for the snapshot.
 func (l *hnswCommitLogger) shouldSnapshot() (string, int64, []string, error) {
@@ -224,8 +339,9 @@ func (l *hnswCommitLogger) getLastSnapshotName() (string, error) {
 	return "", nil
 }
 
+// TODO al:snapshot createdAt as separate fn
 // read the directory and find the latest snapshot file
-func (l *hnswCommitLogger) getLastSnapshot() (path string, created int64, err error) {
+func (l *hnswCommitLogger) getLastSnapshot() (path string, createdAt int64, err error) {
 	snapshotDir := snapshotDirectory(l.rootPath, l.id)
 
 	entries, err := os.ReadDir(snapshotDir)
@@ -268,15 +384,27 @@ func (l *hnswCommitLogger) getLastSnapshot() (path string, created int64, err er
 			continue
 		}
 
-		created, err = snapshotTimestamp(path)
+		createdAt, err = snapshotTimestamp(path)
 		if err != nil {
 			return "", 0, errors.Wrapf(err, "get snapshot timestamp")
 		}
-		return path, created, nil
+		return path, createdAt, nil
 	}
 
 	// no snapshot found
 	return "", 0, nil
+}
+
+func (l *hnswCommitLogger) getDeltaCommitLogs(createdAfter int64) (paths []string, err error) {
+	paths, err = getCommitFileNames(l.rootPath, l.id, createdAfter)
+	if err != nil {
+		return nil, errors.Wrapf(err, "get commit log files")
+	}
+	if l := len(paths); l > 0 {
+		// skip last file, still in use
+		return paths[:l-1], nil
+	}
+	return paths, nil
 }
 
 // cleanupSnapshots removes all snapshots, checkpoints and temporary files older than the given timestamp.
@@ -563,6 +691,43 @@ func (l *hnswCommitLogger) readLastSnapshot(rootPath, name string, logger logrus
 	}
 
 	return nil
+}
+
+func (l *hnswCommitLogger) readSnapshot(path string) (*DeserializationResult, error) {
+	checkpoints, err := readCheckpoints(path)
+	if err != nil {
+		// if for any reason the checkpoints file is not found or corrupted
+		// we need to remove the snapshot file and create a new one from the commit log.
+		_ = os.Remove(path)
+		cpPath := path + ".checkpoints"
+		_ = os.Remove(cpPath)
+
+		l.logger.WithField("action", "hnsw_remove_corrupt_snapshot").
+			WithField("path", path).
+			WithError(err).
+			Error("checkpoints file not found or corrupted, removing snapshot files")
+
+		return nil, errors.Wrapf(err, "read checkpoints of snapshot '%s'", path)
+	}
+
+	// TODO al:snapshot extract concurrency
+	// TODO al:snapshot remove logger arg
+	state, err := l.readStateFrom(path, 8, checkpoints, l.logger)
+	if err != nil {
+		// if for any reason the snapshot file is not found or corrupted
+		// we need to remove the snapshot file and create a new one from the commit log.
+		_ = os.Remove(path)
+		cpPath := path + ".checkpoints"
+		_ = os.Remove(cpPath)
+
+		l.logger.WithField("action", "hnsw_remove_corrupt_snapshot").
+			WithField("path", path).
+			WithError(err).
+			Error("snapshot file not found or corrupted, removing snapshot files")
+		return nil, errors.Wrapf(err, "read state of snapshot '%s'", path)
+	}
+
+	return state, nil
 }
 
 // returns checkpoints which can be used as parallelizatio hints

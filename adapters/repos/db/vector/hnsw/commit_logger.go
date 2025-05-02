@@ -117,7 +117,7 @@ func getCommitFileNames(rootPath, name string, createdAfter int64) ([]string, er
 		return nil, errors.Wrap(err, "browse commit logger directory")
 	}
 
-	files = removeTmpScratchOrHiddenFiles(files)
+	files = skipTmpScratchOrHiddenFiles(files)
 	files, err = removeTmpCombiningFiles(dir, files)
 	if err != nil {
 		return nil, errors.Wrap(err, "clean up tmp combining files")
@@ -168,7 +168,7 @@ func getCurrentCommitLogFileName(dirPath string) (string, bool, error) {
 	}
 
 	if len(files) > 0 {
-		files = removeTmpScratchOrHiddenFiles(files)
+		files = skipTmpScratchOrHiddenFiles(files)
 		files, err = removeTmpCombiningFiles(dirPath, files)
 		if err != nil {
 			return "", false, errors.Wrap(err, "clean up tmp combining files")
@@ -199,23 +199,11 @@ func getCurrentCommitLogFileName(dirPath string) (string, bool, error) {
 	return files[0].Name(), true, nil
 }
 
-func removeTmpScratchOrHiddenFiles(in []os.DirEntry) []os.DirEntry {
+func skipTmpScratchOrHiddenFiles(in []os.DirEntry) []os.DirEntry {
 	out := make([]os.DirEntry, len(in))
 	i := 0
 	for _, info := range in {
 		if strings.HasSuffix(info.Name(), ".scratch.tmp") {
-			continue
-		}
-
-		if strings.HasSuffix(info.Name(), ".snapshot") {
-			continue
-		}
-
-		if strings.HasSuffix(info.Name(), ".snapshot.checkpoints") {
-			continue
-		}
-
-		if strings.HasSuffix(info.Name(), ".snapshot.tmp") {
 			continue
 		}
 
