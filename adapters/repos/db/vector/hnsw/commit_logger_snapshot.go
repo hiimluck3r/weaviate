@@ -61,106 +61,136 @@ func snapshotDirectory(rootPath, name string) string {
 // - the file is not the last condensed commit log file
 // These conditions ensure immutability of the files used to create the snapshot.
 func (l *hnswCommitLogger) CreateSnapshot() (*DeserializationResult, int64, error) {
-	return l.createOrLoadSnapshot(false)
+	logger := l.logger.WithFields(logrus.Fields{
+		"action": "hnsw_snapshot",
+		"id":     l.id,
+		"method": "create_snapshot_TODO",
+	})
+	return l.createAndOptionallyLoadSnapshot(false, logger)
+	// return l.createOrLoadSnapshot(false)
 }
 
 // CreateOrLoadSnapshot works like CreateSnapshot, but it will always load the
 // last snapshot. It is used at startup to automatically create a snapshot
 // while loading the commit log, to avoid having to load the commit log again.
 func (l *hnswCommitLogger) CreateOrLoadSnapshot() (*DeserializationResult, int64, error) {
-	return l.createOrLoadSnapshot(true)
+	logger := l.logger.WithFields(logrus.Fields{
+		"action": "hnsw_snapshot",
+		"id":     l.id,
+		"method": "create_or_load_snapshot_TODO",
+	})
+	return l.createAndOptionallyLoadSnapshot(true, logger)
+	// return l.createOrLoadSnapshot(true)
 }
 
-func (l *hnswCommitLogger) createOrLoadSnapshot(load bool) (*DeserializationResult, int64, error) {
-	err := os.MkdirAll(snapshotDirectory(l.rootPath, l.id), 0o755)
-	if err != nil {
-		return nil, 0, errors.Wrapf(err, "create snapshot directory")
-	}
+// func (l *hnswCommitLogger) createOrLoadSnapshot(load bool) (*DeserializationResult, int64, error) {
+// 	err := os.MkdirAll(snapshotDirectory(l.rootPath, l.id), 0o755)
+// 	if err != nil {
+// 		return nil, 0, errors.Wrapf(err, "create snapshot directory")
+// 	}
 
-	snapshot, from, immutableFiles, err := l.shouldSnapshot()
-	if err != nil {
-		return nil, 0, err
-	}
-	if !load && len(immutableFiles) == 0 {
-		// no snapshot needed and no need to load the state from disk
-		return nil, from, nil
-	}
+// 	snapshot, from, immutableFiles, err := l.shouldSnapshot()
+// 	if err != nil {
+// 		return nil, 0, err
+// 	}
+// 	if !load && len(immutableFiles) == 0 {
+// 		// no snapshot needed and no need to load the state from disk
+// 		return nil, from, nil
+// 	}
 
-	// load the last snapshot
-	var state *DeserializationResult
-	if snapshot != "" {
-		start := time.Now()
+// 	// load the last snapshot
+// 	var state *DeserializationResult
+// 	if snapshot != "" {
+// 		start := time.Now()
 
-		l.logger.WithField("action", "hnsw_load_snapshot").
-			Info("loading snapshot")
+// 		l.logger.WithField("action", "hnsw_load_snapshot").
+// 			Info("loading snapshot")
 
-		state = l.readLastSnapshot(l.rootPath, l.id, l.logger)
+// 		state = l.readLastSnapshot(l.rootPath, l.id, l.logger)
 
-		if state != nil {
-			l.logger.WithField("action", "hnsw_load_snapshot").
-				WithField("duration", time.Since(start).String()).
-				Info("snapshot loaded")
-		}
-	}
+// 		if state != nil {
+// 			l.logger.WithField("action", "hnsw_load_snapshot").
+// 				WithField("duration", time.Since(start).String()).
+// 				Info("snapshot loaded")
+// 		}
+// 	}
 
-	if len(immutableFiles) == 0 {
-		// no commit log files to load, just return the snapshot state
-		if state == nil {
-			// if the state is nil, the snapshot was most probably corrupted
-			// or empty. force loading the commit log instead by setting from to 0.
-			return nil, 0, nil
-		}
+// 	if len(immutableFiles) == 0 {
+// 		// no commit log files to load, just return the snapshot state
+// 		if state == nil {
+// 			// if the state is nil, the snapshot was most probably corrupted
+// 			// or empty. force loading the commit log instead by setting from to 0.
+// 			return nil, 0, nil
+// 		}
 
-		return state, from, nil
-	}
+// 		return state, from, nil
+// 	}
 
-	start := time.Now()
+// 	start := time.Now()
 
-	l.logger.WithField("action", "hnsw_create_snapshot").
-		Info("creating snapshot")
+// 	l.logger.WithField("action", "hnsw_create_snapshot").
+// 		Info("creating snapshot")
 
-	// load the immutable commit log state since the last snapshot
-	state, err = loadCommitLoggerState(l.logger, immutableFiles, state, nil)
-	if err != nil {
-		return nil, 0, err
-	}
+// 	// load the immutable commit log state since the last snapshot
+// 	state, err = loadCommitLoggerState(l.logger, immutableFiles, state, nil)
+// 	if err != nil {
+// 		return nil, 0, err
+// 	}
 
-	// create a new snapshot file
-	snapshotFileName := l.snapshotFileName(immutableFiles[len(immutableFiles)-1])
-	err = l.writeSnapshot(state, snapshotFileName)
-	if err != nil {
-		return nil, 0, err
-	}
+// 	// create a new snapshot file
+// 	snapshotFileName := l.snapshotFileName(immutableFiles[len(immutableFiles)-1])
+// 	err = l.writeSnapshot(state, snapshotFileName)
+// 	if err != nil {
+// 		return nil, 0, err
+// 	}
 
-	ts, err := snapshotTimestamp(snapshotFileName)
-	if err != nil {
-		return nil, 0, errors.Wrapf(err, "get snapshot timestamp")
-	}
+// 	ts, err := snapshotTimestamp(snapshotFileName)
+// 	if err != nil {
+// 		return nil, 0, errors.Wrapf(err, "get snapshot timestamp")
+// 	}
 
-	err = l.cleanupSnapshots(ts)
-	if err != nil {
-		l.logger.WithField("action", "hnsw_cleanup_snapshots").
-			WithField("path", snapshotFileName).
-			WithField("error", err).
-			Warn("failed to cleanup snapshots")
-	}
+// 	err = l.cleanupSnapshots(ts)
+// 	if err != nil {
+// 		l.logger.WithField("action", "hnsw_cleanup_snapshots").
+// 			WithField("path", snapshotFileName).
+// 			WithField("error", err).
+// 			Warn("failed to cleanup snapshots")
+// 	}
 
-	l.logger.WithField("action", "hnsw_create_snapshot").
-		WithField("path", snapshotFileName).
-		WithField("duration", time.Since(start).String()).
-		Info("snapshot created")
+// 	l.logger.WithField("action", "hnsw_create_snapshot").
+// 		WithField("path", snapshotFileName).
+// 		WithField("duration", time.Since(start).String()).
+// 		Info("snapshot created")
 
-	return state, ts, nil
-}
+// 	return state, ts, nil
+// }
 
 func (l *hnswCommitLogger) LoadSnapshot() (state *DeserializationResult, createdAt int64, err error) {
+	logger := l.logger.WithFields(logrus.Fields{
+		"action": "hnsw_snapshot",
+		"id":     l.id,
+		"method": "load_snapshot",
+	})
+	started := time.Now()
+	defer func() {
+		l := logger.WithField("took", time.Since(started))
+		if err != nil {
+			l.WithError(err).Errorf("finished with err")
+		} else {
+			l.Debug("finished")
+		}
+	}()
+
 	snapshotPath, createdAt, err := l.getLastSnapshot()
 	if err != nil {
 		return nil, 0, errors.Wrapf(err, "get last snapshot")
 	}
 	if snapshotPath == "" {
+		logger.Debug("no last snapshot found")
 		return nil, 0, nil
 	}
+	logger.WithField("snapshot", snapshotPath).Debug("last snapshot found")
+
 	state, err = l.readSnapshot(snapshotPath)
 	if err != nil {
 		return nil, 0, errors.Wrapf(err, "read snapshot")
@@ -169,175 +199,211 @@ func (l *hnswCommitLogger) LoadSnapshot() (state *DeserializationResult, created
 }
 
 func (l *hnswCommitLogger) CreateSnapshot2() (created bool, err error) {
+	logger := l.logger.WithFields(logrus.Fields{
+		"action": "hnsw_snapshot",
+		"id":     l.id,
+		"method": "create_snapshot",
+	})
+	state, _, err := l.createAndOptionallyLoadSnapshot(false, logger)
+	return state != nil, err
+
+	// snapshotPath, createdAt, err := l.getLastSnapshot()
+	// if err != nil {
+	// 	return false, errors.Wrapf(err, "get last snapshot")
+	// }
+	// commitLogPaths, err := l.getDeltaCommitLogs(createdAt)
+	// if err != nil {
+	// 	return false, errors.Wrapf(err, "get delta commitlogs")
+	// }
+	// // no new files since previous snapshot / no files at all
+	// ln := len(commitLogPaths)
+	// if ln == 0 {
+	// 	return false, nil
+	// }
+
+	// var snapshotState *DeserializationResult
+	// if snapshotPath != "" {
+	// 	snapshotState, err = l.readSnapshot(snapshotPath)
+	// 	if err != nil {
+	// 		return false, errors.Wrapf(err, "read snapshot")
+	// 	}
+	// }
+
+	// // TODO al:snapshot add metrics?
+	// newState, err := loadCommitLoggerState(l.logger, commitLogPaths, snapshotState, nil)
+	// if err != nil {
+	// 	return false, errors.Wrapf(err, "apply delta commitlogs")
+	// }
+
+	// newSnapshotPath := l.snapshotFileName(commitLogPaths[ln-1])
+	// if err := l.writeSnapshot(newState, newSnapshotPath); err != nil {
+	// 	return false, errors.Wrapf(err, "write new snapshot")
+	// }
+
+	// newCreatedAt, err := snapshotTimestamp(newSnapshotPath)
+	// if err != nil {
+	// 	return true, errors.Wrapf(err, "get snapshot created at")
+	// }
+
+	// if err = l.cleanupSnapshots(newCreatedAt); err != nil {
+	// 	return true, errors.Wrapf(err, "cleanup snapshot")
+	// }
+
+	// return true, nil
+}
+
+func (l *hnswCommitLogger) CreateAndLoadSnapshot2() (state *DeserializationResult, createdAt int64, err error) {
+	logger := l.logger.WithFields(logrus.Fields{
+		"action": "hnsw_snapshot",
+		"id":     l.id,
+		"method": "create_and_load_snapshot",
+	})
+	return l.createAndOptionallyLoadSnapshot(true, logger)
+}
+
+func (l *hnswCommitLogger) createAndOptionallyLoadSnapshot(load bool, logger logrus.FieldLogger,
+) (state *DeserializationResult, createdAt int64, err error) {
+	started := time.Now()
+	defer func() {
+		l := logger.WithField("took", time.Since(started))
+		if err != nil {
+			l.WithError(err).Errorf("finished with err")
+		} else {
+			l.Debug("finished")
+		}
+	}()
+
 	snapshotPath, createdAt, err := l.getLastSnapshot()
 	if err != nil {
-		return false, errors.Wrapf(err, "get last snapshot")
+		return nil, 0, errors.Wrapf(err, "get last snapshot")
 	}
 	commitLogPaths, err := l.getDeltaCommitLogs(createdAt)
 	if err != nil {
-		return false, errors.Wrapf(err, "get delta commitlogs")
+		return nil, 0, errors.Wrapf(err, "get delta commitlogs")
 	}
-	// no new files since previous snapshot / no files at all
+
 	ln := len(commitLogPaths)
-	if ln == 0 {
-		return false, nil
+	if !load && ln == 0 {
+		logger.Debug("no delta commitlogs found")
+		// no new commitlogs since last snapshot / no commitlogs at all.
+		// no leading required
+		return nil, 0, nil
 	}
 
 	var snapshotState *DeserializationResult
 	if snapshotPath != "" {
+		logger.WithField("snapshot", snapshotPath).Debug("last snapshot found")
+
 		snapshotState, err = l.readSnapshot(snapshotPath)
 		if err != nil {
-			return false, errors.Wrapf(err, "read snapshot")
+			return nil, 0, errors.Wrapf(err, "read snapshot")
 		}
+	} else {
+		logger.Debug("no last snapshot found")
+	}
+
+	if ln == 0 {
+		logger.Debug("no delta commitlogs found")
+		// no new commitlogs since last snapshot / no commitlogs at all
+		return snapshotState, createdAt, nil
 	}
 
 	// TODO al:snapshot add metrics?
 	newState, err := loadCommitLoggerState(l.logger, commitLogPaths, snapshotState, nil)
 	if err != nil {
-		return false, errors.Wrapf(err, "apply delta commitlogs")
+		return nil, 0, errors.Wrapf(err, "apply delta commitlogs")
 	}
 
 	newSnapshotPath := l.snapshotFileName(commitLogPaths[ln-1])
-	if err := l.writeSnapshot(newState, newSnapshotPath); err != nil {
-		return false, errors.Wrapf(err, "write new snapshot")
-	}
-
 	newCreatedAt, err := snapshotTimestamp(newSnapshotPath)
 	if err != nil {
-		return true, errors.Wrapf(err, "get snapshot created at")
+		return nil, 0, errors.Wrapf(err, "get new snapshot created at")
 	}
+	if err := l.writeSnapshot(newState, newSnapshotPath); err != nil {
+		return nil, 0, errors.Wrapf(err, "write new snapshot")
+	}
+	logger.WithFields(logrus.Fields{
+		"delta_commitlogs": ln,
+		"snapshot":         newSnapshotPath,
+	}).Debug("new snapshot created")
 
 	if err = l.cleanupSnapshots(newCreatedAt); err != nil {
-		return true, errors.Wrapf(err, "cleanup snapshot")
+		return newState, newCreatedAt, errors.Wrapf(err, "cleanup previous snapshot")
 	}
 
-	return true, nil
+	return newState, newCreatedAt, nil
 }
 
-func (l *hnswCommitLogger) CreateAndLoadSnapshot2() (state *DeserializationResult, createdAt int64, err error) {
-
-	return nil, 0, nil
-}
-
-// func (l *hnswCommitLogger) createAndOptionallyLoadSnapshot(load bool,
-// ) (state *DeserializationResult, createdAt int64, err error) {
-// 	snapshotPath, createdAt, err := l.getLastSnapshot()
+// // checks if snapshot should be created, and if so, returns the name of the
+// // immutable commit log files to be used for the snapshot.
+// func (l *hnswCommitLogger) shouldSnapshot() (string, int64, []string, error) {
+// 	name, err := l.getLastSnapshotName()
 // 	if err != nil {
-// 		return nil, 0, errors.Wrapf(err, "get last snapshot")
+// 		return "", 0, nil, errors.Wrapf(err, "get last snapshot name")
 // 	}
-// 	commitLogPaths, err := l.getDeltaCommitLogs(createdAt)
+// 	var from int64
+// 	if name != "" {
+// 		from, err = snapshotTimestamp(name)
+// 		if err != nil {
+// 			return name, 0, nil, errors.Wrapf(err, "get last snapshot time")
+// 		}
+// 	}
+
+// 	// check if commit log contains at least 2 new commit files
+// 	fileNames, err := getCommitFileNames(l.rootPath, l.id, from)
 // 	if err != nil {
-// 		return nil, 0, errors.Wrapf(err, "get delta commitlogs")
-// 	}
-// 	// no new files since previous snapshot
-// 	ln := len(commitLogPaths)
-// 	if !load && ln == 0 {
-// 		return nil, 0, nil
+// 		return name, from, nil, err
 // 	}
 
-// 	state, err = l.readSnapshot(snapshotPath)
+// 	if len(fileNames) < 2 {
+// 		// not enough commit log files.
+// 		// The combiner requires two files minimum.
+// 		// Also a snapshot is not needed if there is only one file.
+// 		return name, from, nil, nil
+// 	}
+
+// 	// get a list of all immutable condensed files
+// 	immutable, err := l.getImmutableCondensedFiles(fileNames)
 // 	if err != nil {
-// 		return nil, 0, errors.Wrapf(err, "read snapshot")
+// 		return name, from, nil, err
 // 	}
 
-// 	// if ln == 0 {
-// 	// 	return state,
-// 	// }
-
-// 	// TODO al:snapshot add metrics?
-// 	state, err = loadCommitLoggerState(l.logger, commitLogPaths, state, nil)
-// 	if err != nil {
-// 		return created, errors.Wrapf(err, "apply delta commitlogs")
-// 	}
-
-// 	newSnapshotPath := l.snapshotFileName(commitLogPaths[ln-1])
-// 	if err := l.writeSnapshot(state, newSnapshotPath); err != nil {
-// 		return created, errors.Wrapf(err, "write new snapshot")
-// 	}
-// 	created = true
-
-// 	createdAt, err = snapshotTimestamp(newSnapshotPath)
-// 	if err != nil {
-// 		return created, errors.Wrapf(err, "get snapshot created at")
-// 	}
-
-// 	if err = l.cleanupSnapshots(createdAt); err != nil {
-// 		return created, errors.Wrapf(err, "cleanup snapshot")
-// 	}
-
-// 	return created, nil
+// 	return name, from, immutable, nil
 // }
-
-// checks if snapshot should be created, and if so, returns the name of the
-// immutable commit log files to be used for the snapshot.
-func (l *hnswCommitLogger) shouldSnapshot() (string, int64, []string, error) {
-	name, err := l.getLastSnapshotName()
-	if err != nil {
-		return "", 0, nil, errors.Wrapf(err, "get last snapshot name")
-	}
-	var from int64
-	if name != "" {
-		from, err = snapshotTimestamp(name)
-		if err != nil {
-			return name, 0, nil, errors.Wrapf(err, "get last snapshot time")
-		}
-	}
-
-	// check if commit log contains at least 2 new commit files
-	fileNames, err := getCommitFileNames(l.rootPath, l.id, from)
-	if err != nil {
-		return name, from, nil, err
-	}
-
-	if len(fileNames) < 2 {
-		// not enough commit log files.
-		// The combiner requires two files minimum.
-		// Also a snapshot is not needed if there is only one file.
-		return name, from, nil, nil
-	}
-
-	// get a list of all immutable condensed files
-	immutable, err := l.getImmutableCondensedFiles(fileNames)
-	if err != nil {
-		return name, from, nil, err
-	}
-
-	return name, from, immutable, nil
-}
 
 func (l *hnswCommitLogger) snapshotFileName(commitLogFileName string) string {
 	return strings.Replace(strings.Replace(commitLogFileName, ".condensed", ".snapshot", 1), "hnsw.commitlog.d", "hnsw.snapshot.d", 1)
 }
 
-// read the directory and find the latest snapshot file
-func (l *hnswCommitLogger) getLastSnapshotName() (string, error) {
-	snapshotDir := snapshotDirectory(l.rootPath, l.id)
+// // read the directory and find the latest snapshot file
+// func (l *hnswCommitLogger) getLastSnapshotName() (string, error) {
+// 	snapshotDir := snapshotDirectory(l.rootPath, l.id)
 
-	files, err := os.ReadDir(snapshotDir)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			// no snapshot directory, no snapshot
-			return "", nil
-		}
+// 	files, err := os.ReadDir(snapshotDir)
+// 	if err != nil {
+// 		if errors.Is(err, os.ErrNotExist) {
+// 			// no snapshot directory, no snapshot
+// 			return "", nil
+// 		}
 
-		return "", errors.Wrapf(err, "read snapshot directory %q", snapshotDir)
-	}
+// 		return "", errors.Wrapf(err, "read snapshot directory %q", snapshotDir)
+// 	}
 
-	for i := len(files) - 1; i >= 0; i-- {
-		file := files[i]
-		if file.IsDir() {
-			continue
-		}
+// 	for i := len(files) - 1; i >= 0; i-- {
+// 		file := files[i]
+// 		if file.IsDir() {
+// 			continue
+// 		}
 
-		name := file.Name()
-		if strings.HasSuffix(name, ".snapshot") {
-			return filepath.Join(snapshotDir, name), nil
-		}
-	}
+// 		name := file.Name()
+// 		if strings.HasSuffix(name, ".snapshot") {
+// 			return filepath.Join(snapshotDir, name), nil
+// 		}
+// 	}
 
-	// no snapshot found
-	return "", nil
-}
+// 	// no snapshot found
+// 	return "", nil
+// }
 
 // TODO al:snapshot createdAt as separate fn
 // read the directory and find the latest snapshot file
@@ -520,6 +586,11 @@ func loadCommitLoggerState(logger logrus.FieldLogger, fileNames []string, state 
 }
 
 func (l *hnswCommitLogger) writeSnapshot(state *DeserializationResult, filename string) error {
+	// TODO al:snapshot create once
+	if err := os.MkdirAll(snapshotDirectory(l.rootPath, l.id), 0o755); err != nil {
+		return errors.Wrapf(err, "make snapshot directory")
+	}
+
 	tmpSnapshotFileName := fmt.Sprintf("%s.tmp", filename)
 	checkPointsFileName := fmt.Sprintf("%s.checkpoints", filename)
 
