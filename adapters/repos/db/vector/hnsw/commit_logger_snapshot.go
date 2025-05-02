@@ -172,6 +172,8 @@ func (l *hnswCommitLogger) LoadSnapshot() (state *DeserializationResult, created
 		"method": "load_snapshot",
 	})
 	started := time.Now()
+
+	logger.Debug("started")
 	defer func() {
 		l := logger.WithField("took", time.Since(started))
 		if err != nil {
@@ -206,50 +208,6 @@ func (l *hnswCommitLogger) CreateSnapshot2() (created bool, err error) {
 	})
 	state, _, err := l.createAndOptionallyLoadSnapshot(false, logger)
 	return state != nil, err
-
-	// snapshotPath, createdAt, err := l.getLastSnapshot()
-	// if err != nil {
-	// 	return false, errors.Wrapf(err, "get last snapshot")
-	// }
-	// commitLogPaths, err := l.getDeltaCommitLogs(createdAt)
-	// if err != nil {
-	// 	return false, errors.Wrapf(err, "get delta commitlogs")
-	// }
-	// // no new files since previous snapshot / no files at all
-	// ln := len(commitLogPaths)
-	// if ln == 0 {
-	// 	return false, nil
-	// }
-
-	// var snapshotState *DeserializationResult
-	// if snapshotPath != "" {
-	// 	snapshotState, err = l.readSnapshot(snapshotPath)
-	// 	if err != nil {
-	// 		return false, errors.Wrapf(err, "read snapshot")
-	// 	}
-	// }
-
-	// // TODO al:snapshot add metrics?
-	// newState, err := loadCommitLoggerState(l.logger, commitLogPaths, snapshotState, nil)
-	// if err != nil {
-	// 	return false, errors.Wrapf(err, "apply delta commitlogs")
-	// }
-
-	// newSnapshotPath := l.snapshotFileName(commitLogPaths[ln-1])
-	// if err := l.writeSnapshot(newState, newSnapshotPath); err != nil {
-	// 	return false, errors.Wrapf(err, "write new snapshot")
-	// }
-
-	// newCreatedAt, err := snapshotTimestamp(newSnapshotPath)
-	// if err != nil {
-	// 	return true, errors.Wrapf(err, "get snapshot created at")
-	// }
-
-	// if err = l.cleanupSnapshots(newCreatedAt); err != nil {
-	// 	return true, errors.Wrapf(err, "cleanup snapshot")
-	// }
-
-	// return true, nil
 }
 
 func (l *hnswCommitLogger) CreateAndLoadSnapshot2() (state *DeserializationResult, createdAt int64, err error) {
@@ -264,6 +222,8 @@ func (l *hnswCommitLogger) CreateAndLoadSnapshot2() (state *DeserializationResul
 func (l *hnswCommitLogger) createAndOptionallyLoadSnapshot(load bool, logger logrus.FieldLogger,
 ) (state *DeserializationResult, createdAt int64, err error) {
 	started := time.Now()
+
+	logger.Debug("started")
 	defer func() {
 		l := logger.WithField("took", time.Since(started))
 		if err != nil {
@@ -325,7 +285,7 @@ func (l *hnswCommitLogger) createAndOptionallyLoadSnapshot(load bool, logger log
 	logger.WithFields(logrus.Fields{
 		"delta_commitlogs": ln,
 		"snapshot":         newSnapshotPath,
-	}).Debug("new snapshot created")
+	}).Info("new snapshot created")
 
 	if err = l.cleanupSnapshots(newCreatedAt); err != nil {
 		return newState, newCreatedAt, errors.Wrapf(err, "cleanup previous snapshot")

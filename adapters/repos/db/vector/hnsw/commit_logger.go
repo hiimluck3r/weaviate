@@ -628,8 +628,8 @@ func (l *hnswCommitLogger) combineLogs(partitions ...string) (bool, error) {
 }
 
 func (l *hnswCommitLogger) createSnapshot(shouldAbort cyclemanager.ShouldAbortCallback) (bool, error) {
-	// TODO al:snapshots implement
-	return false, nil
+	// TODO al:snapshots add conditions
+	return l.CreateSnapshot2()
 }
 
 func (l *hnswCommitLogger) logCombiningThreshold() int64 {
