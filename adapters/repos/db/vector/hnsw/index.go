@@ -21,6 +21,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -163,7 +164,9 @@ type hnsw struct {
 	acornSearch      atomic.Bool
 	acornFilterRatio float64
 
-	disableSnapshots bool
+	disableSnapshots  bool
+	snapshotInterval  time.Duration
+	snapshotOnStartup bool
 
 	compressor compressionhelpers.VectorCompressor
 	pqConfig   ent.PQConfig
@@ -212,6 +215,7 @@ type CommitLogger interface {
 	SwitchCommitLogs(bool) error
 	AddPQCompression(compressionhelpers.PQData) error
 	AddSQCompression(compressionhelpers.SQData) error
+
 	CreateSnapshot() (*DeserializationResult, int64, error)
 	CreateOrLoadSnapshot() (*DeserializationResult, int64, error)
 }
@@ -269,6 +273,8 @@ func New(cfg Config, uc ent.UserConfig,
 		flatSearchConcurrency: max(cfg.FlatSearchConcurrency, 1),
 		acornFilterRatio:      cfg.AcornFilterRatio,
 		disableSnapshots:      cfg.DisableSnapshots,
+		snapshotInterval:      cfg.SnapshotInterval,
+		snapshotOnStartup:     cfg.SnapshotOnStartup,
 		nodes:                 make([]*vertex, cache.InitialSize),
 		cache:                 vectorCache,
 		waitForCachePrefill:   cfg.WaitForCachePrefill,

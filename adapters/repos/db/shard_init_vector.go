@@ -15,6 +15,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/weaviate/weaviate/adapters/repos/db/vector/dynamic"
@@ -117,6 +118,9 @@ func (s *Shard) initVectorIndex(ctx context.Context,
 				FlatSearchConcurrency:  s.index.Config.HNSWFlatSearchConcurrency,
 				AcornFilterRatio:       s.index.Config.HNSWAcornFilterRatio,
 				VisitedListPoolMaxSize: s.index.Config.VisitedListPoolMaxSize,
+				DisableSnapshots:       s.index.Config.HNSWDisableSnapshots,
+				SnapshotInterval:       time.Duration(s.index.Config.HNSWSnapshotIntervalSeconds) * time.Second,
+				SnapshotOnStartup:      s.index.Config.HNSWSnapshotOnStartup,
 			}, hnswUserConfig, s.cycleCallbacks.vectorTombstoneCleanupCallbacks, s.store)
 			if err != nil {
 				return nil, errors.Wrapf(err, "init shard %q: hnsw index", s.ID())

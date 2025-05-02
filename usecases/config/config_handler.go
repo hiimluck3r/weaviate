@@ -318,6 +318,8 @@ type Persistence struct {
 	LSMCycleManagerRoutinesFactor       int    `json:"lsmCycleManagerRoutinesFactor" yaml:"lsmCycleManagerRoutinesFactor"`
 	HNSWMaxLogSize                      int64  `json:"hnswMaxLogSize" yaml:"hnswMaxLogSize"`
 	HNSWDisableSnapshots                bool   `json:"hnswDisableSnapshots" yaml:"hnswDisableSnapshots"`
+	HNSWSnapshotIntervalSeconds         int    `json:"hnswSnapshotIntervalSeconds" yaml:"hnswSnapshotIntervalSeconds"`
+	HNSWSnapshotOnStartup               bool   `json:"hnswSnapshotOnStartup" yaml:"hnswSnapshotOnStartup"`
 	IndexRangeableInMemory              bool   `json:"indexRangeableInMemory" yaml:"indexRangeableInMemory"`
 }
 
@@ -338,6 +340,10 @@ const DefaultPersistenceLSMSegmentsCleanupIntervalSeconds = 0
 const DefaultPersistenceLSMCycleManagerRoutinesFactor = 2
 
 const DefaultPersistenceHNSWMaxLogSize = 500 * 1024 * 1024 // 500MB for backward compatibility
+
+// minimal interval for new hnws snapshot to be created after previous one
+const DefaultPersistenceHNSWSnapshotIntervalSeconds = 6 * 3600 // 6h
+const DefaultPersistenceHNSWSnapshotOnStartup = true
 
 const (
 	DefaultReindexerGoroutinesFactor = 0.5

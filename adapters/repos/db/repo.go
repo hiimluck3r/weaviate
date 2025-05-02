@@ -215,6 +215,8 @@ type Config struct {
 	MaxSegmentSize                      int64
 	HNSWMaxLogSize                      int64
 	HNSWDisableSnapshots                bool
+	HNSWSnapshotIntervalSeconds         int
+	HNSWSnapshotOnStartup               bool
 	HNSWWaitForCachePrefill             bool
 	HNSWFlatSearchConcurrency           int
 	HNSWAcornFilterRatio                float64

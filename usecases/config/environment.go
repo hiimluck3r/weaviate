@@ -299,6 +299,19 @@ func FromEnv(config *Config) error {
 		config.Persistence.HNSWMaxLogSize = DefaultPersistenceHNSWMaxLogSize
 	}
 
+	if err := parsePositiveInt(
+		"PERSISTENCE_HNSW_SNAPSHOT_INTERVAL_SECONDS",
+		func(seconds int) { config.Persistence.HNSWSnapshotIntervalSeconds = seconds },
+		DefaultPersistenceHNSWSnapshotIntervalSeconds,
+	); err != nil {
+		return err
+	}
+
+	config.Persistence.HNSWSnapshotOnStartup = DefaultPersistenceHNSWSnapshotOnStartup
+	if v := os.Getenv("PERSISTENCE_HNSW_SNAPSHOT_ON_STARTUP"); v != "" {
+		config.Persistence.HNSWSnapshotOnStartup = entcfg.Enabled(v)
+	}
+
 	if entcfg.Enabled(os.Getenv("PERSISTENCE_HNSW_DISABLE_SNAPSHOTS")) {
 		config.Persistence.HNSWDisableSnapshots = true
 	}

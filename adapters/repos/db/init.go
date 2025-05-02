@@ -98,6 +98,8 @@ func (db *DB) init(ctx context.Context) error {
 				MaxSegmentSize:                      db.config.MaxSegmentSize,
 				HNSWMaxLogSize:                      db.config.HNSWMaxLogSize,
 				HNSWDisableSnapshots:                db.config.HNSWDisableSnapshots,
+				HNSWSnapshotIntervalSeconds:         db.config.HNSWSnapshotIntervalSeconds,
+				HNSWSnapshotOnStartup:               db.config.HNSWSnapshotOnStartup,
 				HNSWWaitForCachePrefill:             db.config.HNSWWaitForCachePrefill,
 				HNSWFlatSearchConcurrency:           db.config.HNSWFlatSearchConcurrency,
 				HNSWAcornFilterRatio:                db.config.HNSWAcornFilterRatio,
