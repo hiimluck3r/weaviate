@@ -13,7 +13,6 @@ package hnsw
 
 import (
 	"context"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/weaviate/weaviate/adapters/repos/db/vector/common"
@@ -43,7 +42,6 @@ type Config struct {
 	FlatSearchConcurrency     int
 	AcornFilterRatio          float64
 	DisableSnapshots          bool
-	SnapshotInterval          time.Duration
 	SnapshotOnStartup         bool
 
 	// metadata for monitoring

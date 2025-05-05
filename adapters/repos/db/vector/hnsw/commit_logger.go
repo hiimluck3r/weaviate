@@ -73,7 +73,7 @@ func NewCommitLogger(rootPath, name string, logger logrus.FieldLogger,
 	}
 	l.commitLogger = commitlog.NewLoggerWithFile(fd)
 	l.switchLogsCallbackCtrl = maintenanceCallbacks.Register(id("switch_logs"), l.startSwitchLogs)
-	l.condenseLogsCallbackCtrl = maintenanceCallbacks.Register(id("maintain_logs"), l.startCommitLogsMaintenance)
+	l.maintainLogsCallbackCtrl = maintenanceCallbacks.Register(id("maintain_logs"), l.startCommitLogsMaintenance)
 
 	return l, nil
 }
@@ -298,9 +298,12 @@ type hnswCommitLogger struct {
 	commitLogger      *commitlog.Logger
 
 	switchLogsCallbackCtrl   cyclemanager.CycleCallbackCtrl
-	condenseLogsCallbackCtrl cyclemanager.CycleCallbackCtrl
+	maintainLogsCallbackCtrl cyclemanager.CycleCallbackCtrl
 
 	allocChecker memwatch.AllocChecker
+
+	snapshotEnabled  bool
+	snapshotInterval time.Duration
 }
 
 type HnswCommitType uint8 // 256 options, plenty of room for future extensions
@@ -451,7 +454,7 @@ func (l *hnswCommitLogger) Shutdown(ctx context.Context) error {
 	if err := l.switchLogsCallbackCtrl.Unregister(ctx); err != nil {
 		return errors.Wrap(err, "failed to unregister commitlog switch from maintenance cycle")
 	}
-	if err := l.condenseLogsCallbackCtrl.Unregister(ctx); err != nil {
+	if err := l.maintainLogsCallbackCtrl.Unregister(ctx); err != nil {
 		return errors.Wrap(err, "failed to unregister commitlog condense from maintenance cycle")
 	}
 	return nil
@@ -617,7 +620,7 @@ func (l *hnswCommitLogger) condenseLogs() (bool, error) {
 // with partitions = "0002", only logs <older than equal 0002.condensed>
 // or <newer than 0002.condensed> can be combined with each other
 // (0001+0002 or 0003+0004, NOT 0002+0003)
-// partitions should be given as filenames without extentions (0001, 0002)
+// partitions should be given as filenames without extensions (0001, 0002)
 func (l *hnswCommitLogger) combineLogs(partitions ...string) (bool, error) {
 	// maxSize is the desired final size, since we assume a lot of redundancy we
 	// can set the combining threshold higher than the final threshold under the
@@ -627,8 +630,27 @@ func (l *hnswCommitLogger) combineLogs(partitions ...string) (bool, error) {
 	return NewCommitLogCombiner(l.rootPath, l.id, threshold, l.logger).Do(partitions...)
 }
 
+// TODO al:snapshot improve conditions
+// TODO al:snapshot prevent multiple snapshots in parallel
 func (l *hnswCommitLogger) createSnapshot(shouldAbort cyclemanager.ShouldAbortCallback) (bool, error) {
-	// TODO al:snapshots add conditions
+	fmt.Printf("  ==> snapshot enabled [%v] interval [%s]\n\n", l.snapshotEnabled, l.snapshotInterval)
+
+	if !l.snapshotEnabled {
+		return false, nil
+	}
+
+	path, createdAt, err := l.getLastSnapshot()
+	if err != nil {
+		return false, err
+	}
+
+	fmt.Printf("  ==> last snapshot [%d] now [%d] [%s]\n\n",
+		createdAt, time.Now().Add(-l.snapshotInterval).Unix(), path)
+
+	if path != "" && time.Now().Add(-l.snapshotInterval).Unix() <= createdAt {
+		return false, nil
+	}
+
 	return l.CreateSnapshot2()
 }
 

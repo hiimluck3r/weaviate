@@ -111,6 +111,8 @@ func (s *Shard) initVectorIndex(ctx context.Context,
 						hnsw.WithCommitlogThresholdForCombining(s.index.Config.HNSWMaxLogSize),
 						// consistent with previous logic where the individual limit is 1/5 of the combined limit
 						hnsw.WithCommitlogThreshold(s.index.Config.HNSWMaxLogSize/5),
+						hnsw.WithSnapshotEnabled(!s.index.Config.HNSWDisableSnapshots),
+						hnsw.WithSnapshotInterval(time.Duration(s.index.Config.HNSWSnapshotIntervalSeconds)*time.Second),
 					)
 				},
 				AllocChecker:           s.index.allocChecker,
@@ -119,7 +121,6 @@ func (s *Shard) initVectorIndex(ctx context.Context,
 				AcornFilterRatio:       s.index.Config.HNSWAcornFilterRatio,
 				VisitedListPoolMaxSize: s.index.Config.VisitedListPoolMaxSize,
 				DisableSnapshots:       s.index.Config.HNSWDisableSnapshots,
-				SnapshotInterval:       time.Duration(s.index.Config.HNSWSnapshotIntervalSeconds) * time.Second,
 				SnapshotOnStartup:      s.index.Config.HNSWSnapshotOnStartup,
 			}, hnswUserConfig, s.cycleCallbacks.vectorTombstoneCleanupCallbacks, s.store)
 			if err != nil {
