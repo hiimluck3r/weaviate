@@ -66,8 +66,6 @@ type hnswCommitLogger struct {
 	// (so 0001+0002 or 0003+0004, NOT 0002+0003)
 	// partitions are commitlog filenames (no path, no extension)
 	snapshotPartitions []string
-	// number of goroutines handling snapshot's checkpoints read
-	snapshotConcurrency int
 }
 
 func NewCommitLogger(rootPath, name string, logger logrus.FieldLogger,
@@ -165,7 +163,7 @@ func getCommitFileNames(rootPath, name string, createdAfter int64) ([]string, er
 	}
 
 	if createdAfter > 0 {
-		files, err = filterCommitLogFiles(dir, files, createdAfter)
+		files, err = filterNewerCommitLogFiles(dir, files, createdAfter)
 		if err != nil {
 			return nil, errors.Wrap(err, "remove old commit files")
 		}
@@ -284,33 +282,21 @@ func removeTmpCombiningFiles(dirPath string, in []os.DirEntry) ([]os.DirEntry, e
 	return out[:i], nil
 }
 
-func filterCommitLogFiles(dirPath string,
-	in []os.DirEntry, createdAfter int64,
+func filterNewerCommitLogFiles(dirPath string, in []os.DirEntry, createdAfter int64,
 ) ([]os.DirEntry, error) {
 	out := make([]os.DirEntry, len(in))
 	i := 0
-	for _, info := range in {
-		ts, err := asTimeStamp(info.Name())
+	for _, entry := range in {
+		ts, err := asTimeStamp(entry.Name())
 		if err != nil {
-			return nil, errors.Wrapf(err, "read commitlog timestamp %q", info.Name())
+			return nil, errors.Wrapf(err, "read commitlog timestamp %q", entry.Name())
 		}
 
 		if ts <= createdAfter {
 			continue
 		}
 
-		filePath := filepath.Join(dirPath, info.Name())
-
-		fileInfo, err := os.Stat(filePath)
-		if err != nil {
-			return nil, err
-		}
-
-		if fileInfo.Size() == 0 {
-			continue
-		}
-
-		out[i] = info
+		out[i] = entry
 		i++
 	}
 
@@ -642,15 +628,6 @@ func (l *hnswCommitLogger) createSnapshot(shouldAbort cyclemanager.ShouldAbortCa
 
 	if !l.snapshotEnabled {
 		return false, nil
-	}
-
-	// not inited, find last snapshot
-	if l.snapshotLastCreatedAt.IsZero() {
-		_, createdAt, err := l.getLastSnapshot()
-		if err != nil {
-			return false, err
-		}
-		l.snapshotLastCreatedAt = time.Unix(createdAt, 0)
 	}
 
 	fmt.Printf("  ==> last snapshot [%s] now [%s]\n\n",

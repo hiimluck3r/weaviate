@@ -34,7 +34,8 @@ import (
 )
 
 const checkpointChunkSize = 100_000
-const snapshotConcurrency = 8
+const snapshotConcurrency = 8 // number of goroutines handling snapshot's checkpoints read
+const snapshotMinNoOfDeltaCommitLogs = 2
 
 const (
 	SnapshotCompressionTypePQ = iota + 1
@@ -92,7 +93,7 @@ func (l *hnswCommitLogger) LoadSnapshot() (state *DeserializationResult, created
 // Creates a snapshot of the commit log. Returns if snapshot was actually created.
 // The snapshot is created from the last snapshot and commitlog files created after,
 // or from the entire commit log if there is no previous snapshot.
-// The snapshot state contains all but last commitlog (which remains mutable).
+// The snapshot state contains all but last commitlog (still in use and mutable).
 func (l *hnswCommitLogger) CreateSnapshot() (created bool, createdAt int64, err error) {
 	logger := l.logger.WithFields(logrus.Fields{
 		"action": "hnsw_snapshot",
@@ -139,9 +140,9 @@ func (l *hnswCommitLogger) createAndOptionallyLoadSnapshot(load bool, logger log
 	}
 
 	ln := len(commitLogPaths)
-	if !load && ln == 0 {
-		logger.Debug("no delta commitlogs found")
-		// no new commitlogs since last snapshot / no commitlogs at all.
+	if !load && ln < snapshotMinNoOfDeltaCommitLogs {
+		logger.Debugf("not enough delta commitlogs found (%d of required %d)", ln, snapshotMinNoOfDeltaCommitLogs)
+		// not enough new commitlogs since last snapshot / not enough at all.
 		// no leading required
 		return nil, 0, nil
 	}
@@ -159,8 +160,8 @@ func (l *hnswCommitLogger) createAndOptionallyLoadSnapshot(load bool, logger log
 	}
 
 	if ln == 0 {
-		logger.Debug("no delta commitlogs found")
-		// no new commitlogs since last snapshot / no commitlogs at all
+		logger.Debugf("not enough delta commitlogs found (%d of required %d)", ln, snapshotMinNoOfDeltaCommitLogs)
+		// not enough new commitlogs since last snapshot / not enough at all.
 		return snapshotState, createdAt, nil
 	}
 
@@ -201,7 +202,6 @@ func (l *hnswCommitLogger) initSnapshotData() error {
 			return errors.Wrapf(err, "get last snapshot")
 		}
 
-		l.snapshotConcurrency = snapshotConcurrency
 		l.snapshotLastCreatedAt = time.Unix(createdAt, 0)
 		l.snapshotPartitions = []string{}
 
@@ -273,14 +273,16 @@ func (l *hnswCommitLogger) getLastSnapshot() (path string, createdAt int64, err 
 
 func (l *hnswCommitLogger) getDeltaCommitLogs(createdAfter int64) (paths []string, err error) {
 	paths, err = getCommitFileNames(l.rootPath, l.id, createdAfter)
+	fmt.Printf("  ==> delta commit logs created after [%d] paths %v\n\n", createdAfter, paths)
+
 	if err != nil {
 		return nil, errors.Wrapf(err, "get commit log files")
 	}
-	if l := len(paths); l > 0 {
-		// skip last file, still in use
+	if l := len(paths); l > 1 {
+		// skip last file, still in use and mutable
 		return paths[:l-1], nil
 	}
-	return paths, nil
+	return []string{}, nil
 }
 
 // cleanupSnapshots removes all snapshots, checkpoints and temporary files older than the given timestamp.
@@ -857,7 +859,7 @@ func (l *hnswCommitLogger) readStateFrom(filename string, checkpoints []Checkpoi
 	var mu sync.Mutex
 
 	eg := enterrors.NewErrorGroupWrapper(l.logger)
-	eg.SetLimit(l.snapshotConcurrency)
+	eg.SetLimit(snapshotConcurrency)
 	for cpPos, cp := range checkpoints {
 		if cpPos == len(checkpoints)-1 {
 			// last checkpoint, no need to read
