@@ -165,7 +165,6 @@ func (l *hnswCommitLogger) createAndOptionallyLoadSnapshot(load bool, logger log
 		return snapshotState, createdAt, nil
 	}
 
-	// TODO al:snapshot add metrics?
 	newState, err := loadCommitLoggerState(l.logger, commitLogPaths, snapshotState, nil)
 	if err != nil {
 		return nil, 0, errors.Wrapf(err, "apply delta commitlogs")
@@ -216,7 +215,6 @@ func (l *hnswCommitLogger) snapshotFileName(commitLogFileName string) string {
 	return strings.Replace(strings.Replace(commitLogFileName, ".condensed", ".snapshot", 1), "hnsw.commitlog.d", "hnsw.snapshot.d", 1)
 }
 
-// TODO al:snapshot createdAt as separate fn
 // read the directory and find the latest snapshot file
 func (l *hnswCommitLogger) getLastSnapshot() (path string, createdAt int64, err error) {
 	snapshotDir := snapshotDirectory(l.rootPath, l.id)

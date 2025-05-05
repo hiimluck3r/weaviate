@@ -640,14 +640,7 @@ func (l *hnswCommitLogger) createSnapshot(shouldAbort cyclemanager.ShouldAbortCa
 	created, createdAt, err := l.CreateSnapshot()
 	if created {
 		l.snapshotLastCreatedAt = time.Unix(createdAt, 0)
-
-		// TODO al:snapshot get name from CreateSnapshot
-		path, _, err := l.getLastSnapshot()
-		if err != nil {
-			return created, err
-		}
-
-		l.snapshotPartitions = []string{snapshotName(path)}
+		l.snapshotPartitions = []string{fmt.Sprintf("%d", createdAt)}
 	}
 	return created, err
 }
