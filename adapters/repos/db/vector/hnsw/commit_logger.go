@@ -32,7 +32,6 @@ import (
 )
 
 const defaultCommitLogSize = 500 * 1024 * 1024
-const snapshotConcurrency = 8
 
 type hnswCommitLogger struct {
 	// protect against concurrent attempts to write in the underlying file or
@@ -105,19 +104,8 @@ func NewCommitLogger(rootPath, name string, logger logrus.FieldLogger,
 	l.switchLogsCallbackCtrl = maintenanceCallbacks.Register(id("switch_logs"), l.startSwitchLogs)
 	l.maintainLogsCallbackCtrl = maintenanceCallbacks.Register(id("maintain_logs"), l.startCommitLogsMaintenance)
 
-	// init snapshot data
-	if l.snapshotEnabled {
-		path, createdAt, err := l.getLastSnapshot()
-		if err != nil {
-			return nil, err
-		}
-
-		l.snapshotConcurrency = snapshotConcurrency
-		l.snapshotLastCreatedAt = time.Unix(createdAt, 0)
-		l.snapshotPartitions = []string{}
-		if path != "" {
-			l.snapshotPartitions = append(l.snapshotPartitions, snapshotName(path))
-		}
+	if err := l.initSnapshotData(); err != nil {
+		return nil, errors.Wrapf(err, "init snapshot data")
 	}
 
 	return l, nil
@@ -676,7 +664,7 @@ func (l *hnswCommitLogger) createSnapshot(shouldAbort cyclemanager.ShouldAbortCa
 	if created {
 		l.snapshotLastCreatedAt = time.Unix(createdAt, 0)
 
-		// TODO al:snapshot get name from create snapshot
+		// TODO al:snapshot get name from CreateSnapshot
 		path, _, err := l.getLastSnapshot()
 		if err != nil {
 			return created, err

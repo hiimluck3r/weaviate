@@ -34,6 +34,7 @@ import (
 )
 
 const checkpointChunkSize = 100_000
+const snapshotConcurrency = 8
 
 const (
 	SnapshotCompressionTypePQ = iota + 1
@@ -187,6 +188,28 @@ func (l *hnswCommitLogger) createAndOptionallyLoadSnapshot(load bool, logger log
 	}
 
 	return newState, newCreatedAt, nil
+}
+
+func (l *hnswCommitLogger) initSnapshotData() error {
+	if l.snapshotEnabled {
+		if err := os.MkdirAll(snapshotDirectory(l.rootPath, l.id), 0o755); err != nil {
+			return errors.Wrapf(err, "make snapshot directory")
+		}
+
+		path, createdAt, err := l.getLastSnapshot()
+		if err != nil {
+			return errors.Wrapf(err, "get last snapshot")
+		}
+
+		l.snapshotConcurrency = snapshotConcurrency
+		l.snapshotLastCreatedAt = time.Unix(createdAt, 0)
+		l.snapshotPartitions = []string{}
+
+		if path != "" {
+			l.snapshotPartitions = append(l.snapshotPartitions, snapshotName(path))
+		}
+	}
+	return nil
 }
 
 func (l *hnswCommitLogger) snapshotFileName(commitLogFileName string) string {
@@ -373,11 +396,6 @@ func loadCommitLoggerState(logger logrus.FieldLogger, fileNames []string, state 
 }
 
 func (l *hnswCommitLogger) writeSnapshot(state *DeserializationResult, filename string) error {
-	// TODO al:snapshot create once
-	if err := os.MkdirAll(snapshotDirectory(l.rootPath, l.id), 0o755); err != nil {
-		return errors.Wrapf(err, "make snapshot directory")
-	}
-
 	tmpSnapshotFileName := fmt.Sprintf("%s.tmp", filename)
 	checkPointsFileName := fmt.Sprintf("%s.checkpoints", filename)
 
@@ -446,9 +464,7 @@ func (l *hnswCommitLogger) readSnapshot(path string) (*DeserializationResult, er
 		return nil, errors.Wrapf(err, "read checkpoints of snapshot '%s'", path)
 	}
 
-	// TODO al:snapshot extract concurrency
-	// TODO al:snapshot remove logger arg
-	state, err := l.readStateFrom(path, 8, checkpoints, l.logger)
+	state, err := l.readStateFrom(path, checkpoints)
 	if err != nil {
 		// if for any reason the snapshot file is not found or corrupted
 		// we need to remove the snapshot file and create a new one from the commit log.
@@ -668,9 +684,7 @@ func (l *hnswCommitLogger) writeMetadataTo(state *DeserializationResult, w io.Wr
 	return offset, nil
 }
 
-func (l *hnswCommitLogger) readStateFrom(filename string, concurrency int, checkpoints []Checkpoint,
-	logger logrus.FieldLogger,
-) (*DeserializationResult, error) {
+func (l *hnswCommitLogger) readStateFrom(filename string, checkpoints []Checkpoint) (*DeserializationResult, error) {
 	res := &DeserializationResult{
 		NodesDeleted:      make(map[uint64]struct{}),
 		Tombstones:        make(map[uint64]struct{}),
@@ -842,8 +856,8 @@ func (l *hnswCommitLogger) readStateFrom(filename string, concurrency int, check
 
 	var mu sync.Mutex
 
-	eg := enterrors.NewErrorGroupWrapper(logger)
-	eg.SetLimit(concurrency)
+	eg := enterrors.NewErrorGroupWrapper(l.logger)
+	eg.SetLimit(l.snapshotConcurrency)
 	for cpPos, cp := range checkpoints {
 		if cpPos == len(checkpoints)-1 {
 			// last checkpoint, no need to read
