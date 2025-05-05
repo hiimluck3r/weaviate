@@ -341,9 +341,11 @@ const DefaultPersistenceLSMCycleManagerRoutinesFactor = 2
 
 const DefaultPersistenceHNSWMaxLogSize = 500 * 1024 * 1024 // 500MB for backward compatibility
 
-// minimal interval for new hnws snapshot to be created after previous one
-const DefaultPersistenceHNSWSnapshotIntervalSeconds = 6 * 3600 // 6h
-const DefaultPersistenceHNSWSnapshotOnStartup = true
+const (
+	// minimal interval for new hnws snapshot to be created after last one
+	DefaultPersistenceHNSWSnapshotIntervalSeconds = 6 * 3600 // 6h
+	DefaultPersistenceHNSWSnapshotOnStartup       = true
+)
 
 const (
 	DefaultReindexerGoroutinesFactor = 0.5

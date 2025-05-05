@@ -95,7 +95,7 @@ func (l *hnswCommitLogger) LoadSnapshot() (state *DeserializationResult, created
 // Creates a snapshot of the commit log. Returns if snapshot was actually created.
 // The snapshot is created from the last snapshot and commitlog files created after,
 // or from the entire commit log if there is no previous snapshot.
-// The snapshot state contains all but last commitlog (still in use and mutable).
+// The snapshot state contains all but last commitlog (may still be in use and mutable).
 func (l *hnswCommitLogger) CreateSnapshot() (created bool, createdAt int64, err error) {
 	logger := l.logger.WithFields(logrus.Fields{
 		"action": "hnsw_snapshot",
@@ -273,13 +273,11 @@ func (l *hnswCommitLogger) getLastSnapshot() (path string, createdAt int64, err 
 
 func (l *hnswCommitLogger) getDeltaCommitLogs(createdAfter int64) (paths []string, err error) {
 	paths, err = getCommitFileNames(l.rootPath, l.id, createdAfter)
-	fmt.Printf("  ==> delta commit logs created after [%d] paths %v\n\n", createdAfter, paths)
-
 	if err != nil {
 		return nil, errors.Wrapf(err, "get commit log files")
 	}
 	if l := len(paths); l > 1 {
-		// skip last file, still in use and mutable
+		// skip last file, may still be in use and mutable
 		return paths[:l-1], nil
 	}
 	return []string{}, nil
