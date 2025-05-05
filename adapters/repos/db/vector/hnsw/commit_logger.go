@@ -480,6 +480,7 @@ func (l *hnswCommitLogger) startSwitchLogs(shouldAbort cyclemanager.ShouldAbortC
 }
 
 func (l *hnswCommitLogger) startCommitLogsMaintenance(shouldAbort cyclemanager.ShouldAbortCallback) bool {
+	// TODO al:snapshot avoid reading snapshot from file
 	partitions := []string{}
 	if path, _, err := l.getLastSnapshot(); err == nil && path != "" {
 		partitions = append(partitions, snapshotName(path))
@@ -660,7 +661,7 @@ func (l *hnswCommitLogger) createSnapshot(shouldAbort cyclemanager.ShouldAbortCa
 		return false, nil
 	}
 
-	created, createdAt, err := l.CreateSnapshot2()
+	created, createdAt, err := l.CreateSnapshot()
 	if created {
 		l.snapshotLastCreatedAt = time.Unix(createdAt, 0)
 	}

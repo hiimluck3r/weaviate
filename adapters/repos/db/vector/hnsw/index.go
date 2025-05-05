@@ -214,8 +214,9 @@ type CommitLogger interface {
 	AddPQCompression(compressionhelpers.PQData) error
 	AddSQCompression(compressionhelpers.SQData) error
 
-	CreateSnapshot() (*DeserializationResult, int64, error)
-	CreateOrLoadSnapshot() (*DeserializationResult, int64, error)
+	CreateSnapshot() (bool, int64, error)
+	CreateAndLoadSnapshot() (*DeserializationResult, int64, error)
+	LoadSnapshot() (*DeserializationResult, int64, error)
 }
 
 type BufferedLinksLogger interface {

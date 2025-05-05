@@ -140,9 +140,9 @@ func TestCreateSnapshot(t *testing.T) {
 			cl := createTestCommitLoggerForSnapshots(t, dir)
 			createSnapshotTestData(t, commitLogDirectory(dir, "main"), test.setup...)
 
-			state, _, err := cl.CreateSnapshot()
+			created, _, err := cl.CreateSnapshot()
 			require.NoError(t, err)
-			require.Equal(t, state != nil, test.created)
+			require.Equal(t, created, test.created)
 			require.Equal(t, test.expected, readDir(t, snapshotDirectory(dir, "main")))
 		})
 	}
@@ -296,7 +296,7 @@ func TestCreateSnapshotCrashRecovery(t *testing.T) {
 	})
 }
 
-func TestCreateOrLoadSnapshot(t *testing.T) {
+func TestCreateAndLoadSnapshot(t *testing.T) {
 	t.Run("create and load snapshot", func(t *testing.T) {
 		dir := t.TempDir()
 		cl := createTestCommitLoggerForSnapshots(t, dir)
@@ -307,7 +307,7 @@ func TestCreateOrLoadSnapshot(t *testing.T) {
 
 		// try to create a snapshot, should not create it
 		// because there is not enough data
-		state, _, err := cl.CreateOrLoadSnapshot()
+		state, _, err := cl.CreateAndLoadSnapshot()
 		require.NoError(t, err)
 		require.Nil(t, state)
 		files := readDir(t, sDir)
@@ -317,7 +317,7 @@ func TestCreateOrLoadSnapshot(t *testing.T) {
 		createSnapshotTestData(t, clDir, "1001.condensed", 1000)
 
 		// create snapshot
-		state, _, err = cl.CreateOrLoadSnapshot()
+		state, _, err = cl.CreateAndLoadSnapshot()
 		require.NoError(t, err)
 		require.NotNil(t, state)
 		files = readDir(t, sDir)
@@ -325,7 +325,7 @@ func TestCreateOrLoadSnapshot(t *testing.T) {
 
 		// try again, should not create a new snapshot
 		// but should return the existing one
-		state, _, err = cl.CreateOrLoadSnapshot()
+		state, _, err = cl.CreateAndLoadSnapshot()
 		require.NoError(t, err)
 		require.NotNil(t, state)
 		files = readDir(t, sDir)
@@ -341,9 +341,9 @@ func TestCreateOrLoadSnapshot(t *testing.T) {
 		createSnapshotTestData(t, clDir, "1000.condensed", 1000, "1001.condensed", 1000, "1002.condensed", 1000)
 
 		// create snapshot
-		state, _, err := cl.CreateSnapshot()
+		created, _, err := cl.CreateSnapshot()
 		require.NoError(t, err)
-		require.NotNil(t, state)
+		require.True(t, created)
 		files := readDir(t, sDir)
 		require.Equal(t, []string{"1001.snapshot", "1001.snapshot.checkpoints"}, files)
 
@@ -352,7 +352,7 @@ func TestCreateOrLoadSnapshot(t *testing.T) {
 		require.NoError(t, err)
 
 		// create snapshot should still work
-		state, from, err := cl.CreateOrLoadSnapshot()
+		state, from, err := cl.CreateAndLoadSnapshot()
 		require.NoError(t, err)
 		require.Nil(t, state)
 		require.Zero(t, from)
