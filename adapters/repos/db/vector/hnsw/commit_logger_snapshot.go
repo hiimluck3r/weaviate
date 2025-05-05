@@ -143,7 +143,7 @@ func (l *hnswCommitLogger) createAndOptionallyLoadSnapshot(load bool, logger log
 
 	ln := len(commitLogPaths)
 	if !load && ln < snapshotMinNoOfDeltaCommitLogs {
-		logger.Debugf("not enough delta commitlogs found (%d of required %d)", ln, snapshotMinNoOfDeltaCommitLogs)
+		logger.Debugf("not enough delta commitlogs found (%d of minimum %d)", ln, snapshotMinNoOfDeltaCommitLogs)
 		// not enough new commitlogs since last snapshot / not enough at all.
 		// no leading required
 		return nil, 0, nil
@@ -162,7 +162,7 @@ func (l *hnswCommitLogger) createAndOptionallyLoadSnapshot(load bool, logger log
 	}
 
 	if ln == 0 {
-		logger.Debugf("not enough delta commitlogs found (%d of required %d)", ln, snapshotMinNoOfDeltaCommitLogs)
+		logger.Debugf("not enough delta commitlogs found (%d of minimum %d)", ln, snapshotMinNoOfDeltaCommitLogs)
 		// not enough new commitlogs since last snapshot / not enough at all.
 		return snapshotState, createdAt, nil
 	}

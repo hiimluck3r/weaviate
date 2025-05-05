@@ -622,6 +622,7 @@ func (l *hnswCommitLogger) combineLogs() (bool, error) {
 
 // TODO al:snapshot improve conditions
 // TODO al:snapshot prevent multiple snapshots in parallel
+// TODO al:snapshot handle should abort
 func (l *hnswCommitLogger) createSnapshot(shouldAbort cyclemanager.ShouldAbortCallback) (bool, error) {
 	fmt.Printf("  ==> snapshot enabled [%v] interval [%s]\n\n", l.snapshotEnabled, l.snapshotInterval)
 
