@@ -32,13 +32,43 @@ import (
 )
 
 const defaultCommitLogSize = 500 * 1024 * 1024
+const snapshotConcurrency = 8
 
-func commitLogFileName(rootPath, indexName, fileName string) string {
-	return fmt.Sprintf("%s/%s", commitLogDirectory(rootPath, indexName), fileName)
-}
+type hnswCommitLogger struct {
+	// protect against concurrent attempts to write in the underlying file or
+	// buffer
+	sync.Mutex
 
-func commitLogDirectory(rootPath, name string) string {
-	return fmt.Sprintf("%s/%s.hnsw.commitlog.d", rootPath, name)
+	rootPath          string
+	id                string
+	condensor         Condensor
+	logger            logrus.FieldLogger
+	maxSizeIndividual int64
+	maxSizeCombining  int64
+	commitLogger      *commitlog.Logger
+
+	switchLogsCallbackCtrl   cyclemanager.CycleCallbackCtrl
+	maintainLogsCallbackCtrl cyclemanager.CycleCallbackCtrl
+
+	allocChecker memwatch.AllocChecker
+
+	// whether snapshots are enabled and should be periodically created
+	snapshotEnabled bool
+	// minimum interval to create next snapshot out of last one and new commitlogs
+	snapshotInterval time.Duration
+	// time that last snapshot was created at (based on its name, which is based on last included commitlog name;
+	// not the actual snapshot file creation time)
+	snapshotLastCreatedAt time.Time
+	// partitions mark commitlogs (left ones) that should not be combined with
+	// logs on the right side (newer ones).
+	// example: given logs 0001.condensed, 0002.condensed, 0003.condensed and 0004.condensed
+	// with partition = "0002", only logs [older or equal 0002.condensed]
+	// or [newer than 0002.condensed] can be combined with each other
+	// (so 0001+0002 or 0003+0004, NOT 0002+0003)
+	// partitions are commitlog filenames (no path, no extension)
+	snapshotPartitions []string
+	// number of goroutines handling snapshot's checkpoints read
+	snapshotConcurrency int
 }
 
 func NewCommitLogger(rootPath, name string, logger logrus.FieldLogger,
@@ -75,7 +105,30 @@ func NewCommitLogger(rootPath, name string, logger logrus.FieldLogger,
 	l.switchLogsCallbackCtrl = maintenanceCallbacks.Register(id("switch_logs"), l.startSwitchLogs)
 	l.maintainLogsCallbackCtrl = maintenanceCallbacks.Register(id("maintain_logs"), l.startCommitLogsMaintenance)
 
+	// init snapshot data
+	if l.snapshotEnabled {
+		path, createdAt, err := l.getLastSnapshot()
+		if err != nil {
+			return nil, err
+		}
+
+		l.snapshotConcurrency = snapshotConcurrency
+		l.snapshotLastCreatedAt = time.Unix(createdAt, 0)
+		l.snapshotPartitions = []string{}
+		if path != "" {
+			l.snapshotPartitions = append(l.snapshotPartitions, snapshotName(path))
+		}
+	}
+
 	return l, nil
+}
+
+func commitLogFileName(rootPath, indexName, fileName string) string {
+	return fmt.Sprintf("%s/%s", commitLogDirectory(rootPath, indexName), fileName)
+}
+
+func commitLogDirectory(rootPath, name string) string {
+	return fmt.Sprintf("%s/%s.hnsw.commitlog.d", rootPath, name)
 }
 
 func getLatestCommitFileOrCreate(rootPath, name string) (*os.File, error) {
@@ -284,33 +337,6 @@ type Condensor interface {
 	Do(filename string) error
 }
 
-type hnswCommitLogger struct {
-	// protect against concurrent attempts to write in the underlying file or
-	// buffer
-	sync.Mutex
-
-	rootPath          string
-	id                string
-	condensor         Condensor
-	logger            logrus.FieldLogger
-	maxSizeIndividual int64
-	maxSizeCombining  int64
-	commitLogger      *commitlog.Logger
-
-	switchLogsCallbackCtrl   cyclemanager.CycleCallbackCtrl
-	maintainLogsCallbackCtrl cyclemanager.CycleCallbackCtrl
-
-	allocChecker memwatch.AllocChecker
-
-	// whether snapshots are enabled and should be periodically created
-	snapshotEnabled bool
-	// minimum interval to create next snapshot out of last one and new commitlogs
-	snapshotInterval time.Duration
-	// time that last snapshot was created at (based on its name, which is based on last included commitlog name;
-	// not the actual snapshot file creation time)
-	snapshotLastCreatedAt time.Time
-}
-
 type HnswCommitType uint8 // 256 options, plenty of room for future extensions
 
 const (
@@ -480,15 +506,7 @@ func (l *hnswCommitLogger) startSwitchLogs(shouldAbort cyclemanager.ShouldAbortC
 }
 
 func (l *hnswCommitLogger) startCommitLogsMaintenance(shouldAbort cyclemanager.ShouldAbortCallback) bool {
-	// TODO al:snapshot avoid reading snapshot from file
-	partitions := []string{}
-	if path, _, err := l.getLastSnapshot(); err == nil && path != "" {
-		partitions = append(partitions, snapshotName(path))
-
-		fmt.Printf("  ==> partitions %v\n\n", partitions)
-	}
-
-	executedCombine, err := l.combineLogs(partitions...)
+	executedCombine, err := l.combineLogs()
 	if err != nil {
 		l.logger.WithError(err).
 			WithField("action", "hnsw_commit_log_combining").
@@ -620,20 +638,13 @@ func (l *hnswCommitLogger) condenseLogs() (bool, error) {
 	return false, nil
 }
 
-// partitions marks commitlogs (left ones) that should not be combined with
-// logs on the right side (newer ones). Given logs
-// 0001.condensed, 0002.condensed, 0003.condensed and 0004.condensed
-// with partitions = "0002", only logs <older than equal 0002.condensed>
-// or <newer than 0002.condensed> can be combined with each other
-// (0001+0002 or 0003+0004, NOT 0002+0003)
-// partitions should be given as filenames without extensions (0001, 0002)
-func (l *hnswCommitLogger) combineLogs(partitions ...string) (bool, error) {
+func (l *hnswCommitLogger) combineLogs() (bool, error) {
 	// maxSize is the desired final size, since we assume a lot of redundancy we
 	// can set the combining threshold higher than the final threshold under the
 	// assumption that the combined file will be considerably smaller than the
 	// sum of both input files
 	threshold := l.logCombiningThreshold()
-	return NewCommitLogCombiner(l.rootPath, l.id, threshold, l.logger).Do(partitions...)
+	return NewCommitLogCombiner(l.rootPath, l.id, threshold, l.logger).Do(l.snapshotPartitions...)
 }
 
 // TODO al:snapshot improve conditions
@@ -664,6 +675,14 @@ func (l *hnswCommitLogger) createSnapshot(shouldAbort cyclemanager.ShouldAbortCa
 	created, createdAt, err := l.CreateSnapshot()
 	if created {
 		l.snapshotLastCreatedAt = time.Unix(createdAt, 0)
+
+		// TODO al:snapshot get name from create snapshot
+		path, _, err := l.getLastSnapshot()
+		if err != nil {
+			return created, err
+		}
+
+		l.snapshotPartitions = []string{snapshotName(path)}
 	}
 	return created, err
 }
