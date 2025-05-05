@@ -33,9 +33,11 @@ import (
 	enterrors "github.com/weaviate/weaviate/entities/errors"
 )
 
-const checkpointChunkSize = 100_000
-const snapshotConcurrency = 8 // number of goroutines handling snapshot's checkpoints read
-const snapshotMinNoOfDeltaCommitLogs = 2
+const (
+	checkpointChunkSize            = 100_000
+	snapshotConcurrency            = 8 // number of goroutines handling snapshot's checkpoints reading
+	snapshotMinNoOfDeltaCommitLogs = 2
+)
 
 const (
 	SnapshotCompressionTypePQ = iota + 1

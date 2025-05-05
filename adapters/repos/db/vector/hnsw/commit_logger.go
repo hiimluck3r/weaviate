@@ -163,7 +163,7 @@ func getCommitFileNames(rootPath, name string, createdAfter int64) ([]string, er
 	}
 
 	if createdAfter > 0 {
-		files, err = filterNewerCommitLogFiles(dir, files, createdAfter)
+		files, err = filterNewerCommitLogFiles(files, createdAfter)
 		if err != nil {
 			return nil, errors.Wrap(err, "remove old commit files")
 		}
@@ -282,8 +282,7 @@ func removeTmpCombiningFiles(dirPath string, in []os.DirEntry) ([]os.DirEntry, e
 	return out[:i], nil
 }
 
-func filterNewerCommitLogFiles(dirPath string, in []os.DirEntry, createdAfter int64,
-) ([]os.DirEntry, error) {
+func filterNewerCommitLogFiles(in []os.DirEntry, createdAfter int64) ([]os.DirEntry, error) {
 	out := make([]os.DirEntry, len(in))
 	i := 0
 	for _, entry := range in {
