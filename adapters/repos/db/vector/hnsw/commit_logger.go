@@ -302,8 +302,13 @@ type hnswCommitLogger struct {
 
 	allocChecker memwatch.AllocChecker
 
-	snapshotEnabled  bool
+	// whether snapshots are enabled and should be periodically created
+	snapshotEnabled bool
+	// minimum interval to create next snapshot out of last one and new commitlogs
 	snapshotInterval time.Duration
+	// time that last snapshot was created at (based on its name, which is based on last included commitlog name;
+	// not the actual snapshot file creation time)
+	snapshotLastCreatedAt time.Time
 }
 
 type HnswCommitType uint8 // 256 options, plenty of room for future extensions
@@ -639,19 +644,27 @@ func (l *hnswCommitLogger) createSnapshot(shouldAbort cyclemanager.ShouldAbortCa
 		return false, nil
 	}
 
-	path, createdAt, err := l.getLastSnapshot()
-	if err != nil {
-		return false, err
+	// not inited, find last snapshot
+	if l.snapshotLastCreatedAt.IsZero() {
+		_, createdAt, err := l.getLastSnapshot()
+		if err != nil {
+			return false, err
+		}
+		l.snapshotLastCreatedAt = time.Unix(createdAt, 0)
 	}
 
-	fmt.Printf("  ==> last snapshot [%d] now [%d] [%s]\n\n",
-		createdAt, time.Now().Add(-l.snapshotInterval).Unix(), path)
+	fmt.Printf("  ==> last snapshot [%s] now [%s]\n\n",
+		l.snapshotLastCreatedAt, time.Now().Add(-l.snapshotInterval))
 
-	if path != "" && time.Now().Add(-l.snapshotInterval).Unix() <= createdAt {
+	if !time.Now().Add(-l.snapshotInterval).After(l.snapshotLastCreatedAt) {
 		return false, nil
 	}
 
-	return l.CreateSnapshot2()
+	created, createdAt, err := l.CreateSnapshot2()
+	if created {
+		l.snapshotLastCreatedAt = time.Unix(createdAt, 0)
+	}
+	return created, err
 }
 
 func (l *hnswCommitLogger) logCombiningThreshold() int64 {

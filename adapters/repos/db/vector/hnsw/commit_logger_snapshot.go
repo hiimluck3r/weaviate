@@ -200,14 +200,14 @@ func (l *hnswCommitLogger) LoadSnapshot() (state *DeserializationResult, created
 	return state, createdAt, nil
 }
 
-func (l *hnswCommitLogger) CreateSnapshot2() (created bool, err error) {
+func (l *hnswCommitLogger) CreateSnapshot2() (created bool, createdAt int64, err error) {
 	logger := l.logger.WithFields(logrus.Fields{
 		"action": "hnsw_snapshot",
 		"id":     l.id,
 		"method": "create_snapshot",
 	})
-	state, _, err := l.createAndOptionallyLoadSnapshot(false, logger)
-	return state != nil, err
+	state, createdAt, err := l.createAndOptionallyLoadSnapshot(false, logger)
+	return state != nil, createdAt, err
 }
 
 func (l *hnswCommitLogger) CreateAndLoadSnapshot2() (state *DeserializationResult, createdAt int64, err error) {
