@@ -28,6 +28,7 @@ func createTestCommitLoggerForSnapshots(t *testing.T, dir string) *hnswCommitLog
 		WithCommitlogThreshold(1000),
 		WithCommitlogThresholdForCombining(200),
 		WithCondensor(&fakeCondensor{}),
+		WithSnapshotEnabled(true),
 	}
 
 	commitLogDir := commitLogDirectory(dir, "main")
@@ -89,6 +90,8 @@ func readDir(t *testing.T, dir string) []string {
 	files, err := os.ReadDir(dir)
 	require.NoError(t, err)
 
+	fmt.Printf("  ==> files %v\n\n", files)
+
 	var result []string
 	for _, item := range files {
 		if item.IsDir() {
@@ -115,22 +118,36 @@ func TestCreateSnapshot(t *testing.T) {
 			setup: []any{"1000", 1000},
 		},
 		{
-			name:  "many non-condensed files",
-			setup: []any{"1000", 1000, "1001", 1000, "1002", 1000, "1003", 1000},
+			name:     "many non-condensed files",
+			setup:    []any{"1000", 1000, "1001", 1000, "1002", 1000, "1003", 1000},
+			expected: []string{"1002.snapshot", "1002.snapshot.checkpoints"},
+			created:  true,
 		},
 		{
-			name:  "mutable condensed files",
-			setup: []any{"1000.condensed", 100, "1001.condensed", 100, "1002.condensed", 100, "1003.condensed", 100},
+			name:     "small condensed files",
+			setup:    []any{"1000.condensed", 100, "1001.condensed", 100, "1002.condensed", 100, "1003.condensed", 100},
+			expected: []string{"1002.snapshot", "1002.snapshot.checkpoints"},
+			created:  true,
 		},
 		{
-			name:     "immutable condensed files",
+			name:     "bigger condensed files",
 			setup:    []any{"1000.condensed", 200, "1001.condensed", 200, "1002.condensed", 200, "1003.condensed", 200},
 			expected: []string{"1002.snapshot", "1002.snapshot.checkpoints"},
 			created:  true,
 		},
 		{
-			name:  "not enough immutable condensed files",
+			name:  "not enough condensed files (1)",
 			setup: []any{"1000.condensed", 1000},
+		},
+		{
+			name:  "not enough condensed files (2)",
+			setup: []any{"1000.condensed", 1000, "1001.condensed", 1000},
+		},
+		{
+			name:     "enough condensed files (2)",
+			setup:    []any{"1000.condensed", 1000, "1001.condensed", 1000, "1002.condensed", 1000},
+			expected: []string{"1001.snapshot", "1001.snapshot.checkpoints"},
+			created:  true,
 		},
 	}
 
@@ -142,7 +159,7 @@ func TestCreateSnapshot(t *testing.T) {
 
 			created, _, err := cl.CreateSnapshot()
 			require.NoError(t, err)
-			require.Equal(t, created, test.created)
+			require.Equal(t, test.created, created)
 			require.Equal(t, test.expected, readDir(t, snapshotDirectory(dir, "main")))
 		})
 	}

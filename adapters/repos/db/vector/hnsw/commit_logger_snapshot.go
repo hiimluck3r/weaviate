@@ -37,6 +37,8 @@ const (
 	checkpointChunkSize            = 100_000
 	snapshotConcurrency            = 8 // number of goroutines handling snapshot's checkpoints reading
 	snapshotMinNoOfDeltaCommitLogs = 2
+
+	snapshotDirSuffix = ".hnsw.snapshot.d"
 )
 
 const (
@@ -53,7 +55,7 @@ func snapshotTimestamp(path string) (int64, error) {
 }
 
 func snapshotDirectory(rootPath, name string) string {
-	return fmt.Sprintf("%s/%s.hnsw.snapshot.d", rootPath, name)
+	return filepath.Join(rootPath, name+snapshotDirSuffix)
 }
 
 // Loads state of last available snapshot. Returns nil if no snaphshot was found.
@@ -214,7 +216,8 @@ func (l *hnswCommitLogger) initSnapshotData() error {
 }
 
 func (l *hnswCommitLogger) snapshotFileName(commitLogFileName string) string {
-	return strings.Replace(strings.Replace(commitLogFileName, ".condensed", ".snapshot", 1), "hnsw.commitlog.d", "hnsw.snapshot.d", 1)
+	path := strings.TrimSuffix(commitLogFileName, ".condensed") + ".snapshot"
+	return strings.Replace(path, ".hnsw.commitlog.d", snapshotDirSuffix, 1)
 }
 
 // read the directory and find the latest snapshot file
