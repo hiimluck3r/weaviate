@@ -121,6 +121,7 @@ func (l *hnswCommitLogger) CreateAndLoadSnapshot() (state *DeserializationResult
 	return l.createAndOptionallyLoadSnapshot(true, logger)
 }
 
+// TODO al:snapshot add tests for alloc checker
 func (l *hnswCommitLogger) createAndOptionallyLoadSnapshot(load bool, logger logrus.FieldLogger,
 ) (state *DeserializationResult, createdAt int64, err error) {
 	started := time.Now()
@@ -145,11 +146,18 @@ func (l *hnswCommitLogger) createAndOptionallyLoadSnapshot(load bool, logger log
 	}
 
 	ln := len(commitLogPaths)
-	if !load && ln < snapshotMinNoOfDeltaCommitLogs {
-		logger.Debugf("not enough delta commitlogs found (%d of minimum %d)", ln, snapshotMinNoOfDeltaCommitLogs)
-		// not enough new commitlogs since last snapshot / not enough at all.
-		// no leading required
-		return nil, 0, nil
+	if !load {
+		if ln < snapshotMinNoOfDeltaCommitLogs {
+			logger.Debugf("not enough delta commitlogs found (%d of minimum %d)", ln, snapshotMinNoOfDeltaCommitLogs)
+			// not enough new commitlogs since last snapshot / not enough at all.
+			// no leading required
+			return nil, 0, nil
+		}
+
+		// if no loading required, check if memory allows to create new snapshot
+		if err := l.checkAllocForSnapshot(logger, snapshotPath, commitLogPaths...); err != nil {
+			return nil, 0, err
+		}
 	}
 
 	if snapshotPath != "" {
@@ -164,12 +172,18 @@ func (l *hnswCommitLogger) createAndOptionallyLoadSnapshot(load bool, logger log
 			// failed reading last snapshot. create new one from scratch
 			state = nil
 			createdAt = 0
-
 			commitLogPaths, err = l.getDeltaCommitLogs(createdAt)
 			if err != nil {
 				return nil, 0, errors.Wrapf(err, "get delta commitlogs")
 			}
 			ln = len(commitLogPaths)
+
+			// if no loading required, check again if memory allows to create new snapshot
+			if !load {
+				if err := l.checkAllocForSnapshot(logger, "", commitLogPaths...); err != nil {
+					return nil, 0, err
+				}
+			}
 		}
 	} else {
 		logger.Debug("no last snapshot found")
@@ -242,6 +256,62 @@ func (l *hnswCommitLogger) handleReadSnapshotError(logger logrus.FieldLogger,
 
 	// suppress error
 	return nil
+}
+
+// checkAllocForSnapshot checks whether there is enough memory available to create
+// new snapshot. Required memory is calculated based on total size of snapshot files
+// and delta commitlog files.
+func (l *hnswCommitLogger) checkAllocForSnapshot(logger logrus.FieldLogger,
+	snapshotPath string, commitLogPaths ...string,
+) error {
+	if l.allocChecker != nil {
+		snapshotSize := l.calcSnapshotSize(snapshotPath)
+		commitLogsSize := l.calcCommitLogsSize(commitLogPaths...)
+
+		// We're estimating here that the new snapshot needs about 1B of
+		// memory for every byte of data in the last snapshot and newer log files.
+		// This estimate can probably be refined.
+		requiredSize := snapshotSize + commitLogsSize
+		if err := l.allocChecker.CheckAlloc(requiredSize); err != nil {
+			logger.WithField("size", requiredSize).
+				WithError(err).
+				Warnf("skipping hnsw snapshot due to memory pressure")
+
+			return errors.Wrap(err, "alloc checker")
+		}
+	}
+	return nil
+}
+
+// if file size can not be read, it is skipped
+func (l *hnswCommitLogger) calcSnapshotSize(snapshotPath string) int64 {
+	if snapshotPath == "" {
+		return 0
+	}
+
+	totalSize := int64(0)
+	if info, err := os.Stat(snapshotPath); err == nil {
+		totalSize += info.Size()
+	}
+	if info, err := os.Stat(snapshotPath + ".checkpoints"); err == nil {
+		totalSize += info.Size()
+	}
+	return totalSize
+}
+
+// if file size can not be read, it is skipped
+func (l *hnswCommitLogger) calcCommitLogsSize(commitLogPaths ...string) int64 {
+	if len(commitLogPaths) == 0 {
+		return 0
+	}
+
+	totalSize := int64(0)
+	for i := range commitLogPaths {
+		if info, err := os.Stat(commitLogPaths[i]); err == nil {
+			totalSize += info.Size()
+		}
+	}
+	return totalSize
 }
 
 func (l *hnswCommitLogger) snapshotFileName(commitLogFileName string) string {

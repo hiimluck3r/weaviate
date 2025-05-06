@@ -29,6 +29,7 @@ func createTestCommitLoggerForSnapshots(t *testing.T, dir string) *hnswCommitLog
 		WithCommitlogThresholdForCombining(200),
 		WithCondensor(&fakeCondensor{}),
 		WithSnapshotEnabled(true),
+		WithAllocChecker(fakeAllocChecker{}),
 	}
 
 	commitLogDir := commitLogDirectory(dir, "main")
@@ -394,8 +395,8 @@ func TestCreateAndLoadSnapshot(t *testing.T) {
 		files = readDir(t, sDir)
 		require.Equal(t, []string{"1001.snapshot", "1001.snapshot.checkpoints"}, files)
 		// snapshot has content now
-		fi, err := os.Stat(filepath.Join(sDir, "1001.snapshot"))
+		info, err := os.Stat(filepath.Join(sDir, "1001.snapshot"))
 		require.NoError(t, err)
-		require.Less(t, int64(0), fi.Size())
+		require.Less(t, int64(0), info.Size())
 	})
 }
