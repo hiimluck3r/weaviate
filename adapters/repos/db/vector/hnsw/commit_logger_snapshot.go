@@ -47,7 +47,8 @@ const (
 )
 
 func snapshotName(path string) string {
-	return strings.TrimSuffix(filepath.Base(path), ".snapshot")
+	base := filepath.Base(path)
+	return strings.TrimSuffix(strings.TrimSuffix(base, ".snapshot"), ".snapshot.checkpoints")
 }
 
 func snapshotTimestamp(path string) (int64, error) {
@@ -260,6 +261,27 @@ func (l *hnswCommitLogger) getLastSnapshot() (path string, createdAt int64, err 
 
 		if !strings.HasSuffix(entry.Name(), ".snapshot") {
 			// not a snapshot file
+			continue
+		}
+
+		// check if matching checkpoints file exists
+		found := false
+		for j := len(entries) - 1; j >= 0; j-- {
+			if entries[j].Name() == entry.Name()+".checkpoints" {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			// if for any reason the checkpoints file is not found or corrupted
+			// we need to remove the snapshot file
+			_ = os.Remove(path)
+
+			l.logger.WithField("action", "hnsw_remove_corrupt_snapshot").
+				WithField("path", path).
+				Warn("checkpoints file not found, removing snapshot file")
+
 			continue
 		}
 
