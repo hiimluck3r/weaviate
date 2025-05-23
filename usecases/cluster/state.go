@@ -308,8 +308,13 @@ func (s *State) NodeHostname(nodeName string) (string, bool) {
 func (s *State) NodeAddress(id string) string {
 	s.listLock.RLock()
 	defer s.listLock.RUnlock()
+
 	for _, mem := range s.list.Members() {
 		if mem.Name == id {
+			// Skip nodes with high health score (likely failed)
+			if s.list.GetHealthScore() > 0 && mem.State != memberlist.StateAlive {
+				return ""
+			}
 			return mem.Addr.String()
 		}
 	}

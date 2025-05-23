@@ -12,6 +12,7 @@
 package resolver
 
 import (
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -65,7 +66,7 @@ func (a *raft) ServerAddr(id raftImpl.ServerID) (raftImpl.ServerAddress, error) 
 	defer a.nodesLock.Unlock()
 	if addr == "" {
 		a.notResolvedNodes[id] = struct{}{}
-		return raftImpl.ServerAddress(invalidAddr), nil
+		return "", fmt.Errorf("node %s is not available", id)
 	}
 	delete(a.notResolvedNodes, id)
 
